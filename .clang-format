@@ -1,0 +1,12 @@
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 80
+PointerAlignment: Left
+SortIncludes: true
+AllowShortFunctionsOnASingleLine: Inline
+
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
+
+#Разбивает длинные списки инициализации конструктора
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
