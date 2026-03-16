@@ -11,9 +11,17 @@ FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
 )
-FetchContent_MakeAvailable(json)
 
+FetchContent_Declare(
+    triangles
+    GIT_REPOSITORY https://github.com/HaipoviyPodrostok/Triangles.git
+    GIT_TAG        main
+)
 
+set(USE_OPENCL OFF CACHE BOOL "" FORCE)
+set(ENABLE_LOGS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(json triangles)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -21,18 +29,11 @@ set(SOURCES
     main.cpp
     source/lidar/lidar_processor.cpp
     source/lidar/deviation_map.cpp
-    source/geometry/vector_3d.cpp
-    source/geometry/triangle.cpp
-    source/geometry/section.cpp
-    source/geometry/plane.cpp
-    source/geometry/line.cpp
 )
 
 add_library(lidar_lib STATIC ${SOURCES})
 target_include_directories(lidar_lib PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(lidar_lib PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(lidar_lib PUBLIC nlohmann_json::nlohmann_json geometry_lib)
 
 add_executable(lidar.x ${SOURCES})
 target_link_libraries(lidar.x PRIVATE lidar_lib)
-
-target_link_libraries(lidar.x PRIVATE nlohmann_json::nlohmann_json)

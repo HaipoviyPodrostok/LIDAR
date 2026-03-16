@@ -31,9 +31,11 @@ int main(int argc, char** argv) {
   json data = json::parse(f);
 
   std::vector<lidar::Point2D> polygon;
+
   if (data.contains("objects") && data["objects"].is_array() &&
       !data["objects"].empty()) {
     const auto& obj = data["objects"][0];
+
     if (obj.contains("data") && obj["data"].is_array()) {
       for (const auto& point_arr : obj["data"]) {
         if (point_arr.is_array() && point_arr.size() >= 2) {
@@ -51,6 +53,7 @@ int main(int argc, char** argv) {
   }
 
   int width, height, channels;
+
   uint16_t* img_data =
       stbi_load_16(png_path.c_str(), &width, &height, &channels, 1);
   if (!img_data) {
@@ -86,9 +89,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto out_path = lidar::render_deviation_map(depth_map, mask, config,
-                                              *plane_opt, threshold_mm,
-                                              "deviation_map");
+  auto out_path = lidar::render_deviation_map(
+      depth_map, mask, config, *plane_opt, threshold_mm, "deviation_map");
 
   stbi_image_free(img_data);
 
