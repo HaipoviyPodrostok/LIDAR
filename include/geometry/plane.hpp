@@ -8,6 +8,7 @@ namespace geometry {
 // -- plane -- ((r, n) = D)
 class Plane {
  public:
+  Plane() = default;
   Plane(const Vector3D& point, const Vector3D& n) noexcept;
 
   [[nodiscard]] const Vector3D& get_r() const noexcept { return r; }
@@ -27,6 +28,6 @@ class Plane {
  private:
   Vector3D r;
   Vector3D normal;
-  double D;
+  double D = 0;
 };
 }  // namespace geometry

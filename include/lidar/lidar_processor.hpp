@@ -50,14 +50,15 @@ struct DepthView {
 };
 
 [[nodiscard]] geometry::Vector3D get_3d_coords(
-    uint16_t depth, double u, double v, const LidarConfig& config) noexcept;
+    const uint16_t depth, const double u, const double v,
+    const LidarConfig& config) noexcept;
 
 [[nodiscard]] std::vector<geometry::Vector3D> extract_cloud(
-    DepthView depth_map, const RegionMask& mask,
-    const LidarConfig& config) noexcept;
+    const DepthView depth_map, const RegionMask& mask,
+    const LidarConfig& config);
 
 [[nodiscard]] std::optional<geometry::Plane> fit_plane_ransac(
     std::span<const geometry::Vector3D> cloud, size_t iterations = 2000,
-    double threshold_mm = 30.0) noexcept;
+    double threshold_mm = 30.0);
 
 }  // namespace lidar

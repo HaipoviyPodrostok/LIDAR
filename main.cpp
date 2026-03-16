@@ -1,5 +1,3 @@
-#include <algorithm>
-#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -9,9 +7,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <nlohmann/json.hpp>
 
+#include "lidar/deviation_map.hpp"
 #include "lidar/lidar_processor.hpp"
-#include "stb_image.h"
-#include "stb_image_write.h"
+#include "third_party/stb_image.h"
+#include "third_party/stb_image_write.h"
 
 using json = nlohmann::json;
 
@@ -60,9 +59,8 @@ int main(int argc, char** argv) {
   }
 
   lidar::DepthView depth_map{
-      std::span<const uint16_t>(img_data,
-                                static_cast<size_t>(width) *
-                                    static_cast<size_t>(height)),
+      std::span<const uint16_t>(
+          img_data, static_cast<size_t>(width) * static_cast<size_t>(height)),
       static_cast<size_t>(height), static_cast<size_t>(width)};
 
   lidar::LidarConfig config;
@@ -88,61 +86,12 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // --- Генерация карты отклонений ---
-  const auto& plane = *plane_opt;
-  const size_t w = static_cast<size_t>(width);
-  const size_t h = static_cast<size_t>(height);
-
-  std::vector<uint8_t> rgb(w * h * 3, 0);
-
-  for (size_t r = 0; r < h; ++r) {
-    for (size_t c = 0; c < w; ++c) {
-      const size_t pixel = (r * w + c) * 3;
-
-      if (!mask.is_inside({static_cast<double>(c), static_cast<double>(r)})) {
-        // Вне маски — тёмно-серый фон
-        rgb[pixel + 0] = 30;
-        rgb[pixel + 1] = 30;
-        rgb[pixel + 2] = 30;
-        continue;
-      }
-
-      uint16_t depth = depth_map(r, c);
-      if (depth == 0) {
-        rgb[pixel + 0] = 0;
-        rgb[pixel + 1] = 0;
-        rgb[pixel + 2] = 0;
-        continue;
-      }
-
-      auto pt3d = lidar::get_3d_coords(depth, static_cast<double>(c),
-                                        static_cast<double>(r), config);
-      double dist_val =
-          std::abs((pt3d - plane.get_r()).scalar(plane.get_normal()));
-
-      if (dist_val <= threshold_mm) {
-        // Инлайер (дно кузова) — серый, яркость зависит от близости к плоскости
-        auto gray = static_cast<uint8_t>(
-            128 + std::clamp(static_cast<int>(64.0 * (1.0 - dist_val / threshold_mm)),
-                             0, 64));
-        rgb[pixel + 0] = gray;
-        rgb[pixel + 1] = gray;
-        rgb[pixel + 2] = gray;
-      } else {
-        // Выброс (снег, пыль) — красный, интенсивность по отклонению
-        double intensity = std::clamp(dist_val / (threshold_mm * 5.0), 0.0, 1.0);
-        rgb[pixel + 0] = static_cast<uint8_t>(128 + 127 * intensity);
-        rgb[pixel + 1] = 0;
-        rgb[pixel + 2] = 0;
-      }
-    }
-  }
+  auto out_path = lidar::render_deviation_map(depth_map, mask, config,
+                                              *plane_opt, threshold_mm,
+                                              "deviation_map");
 
   stbi_image_free(img_data);
 
-  std::string out_path = "deviation_map.png";
-  stbi_write_png(out_path.c_str(), width, height, 3, rgb.data(),
-                 width * 3);
   std::cout << "Deviation map saved to: " << out_path << "\n";
 
   return 0;

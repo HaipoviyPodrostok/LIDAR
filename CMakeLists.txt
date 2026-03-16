@@ -20,6 +20,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SOURCES
     main.cpp
     source/lidar/lidar_processor.cpp
+    source/lidar/deviation_map.cpp
     source/geometry/vector_3d.cpp
     source/geometry/triangle.cpp
     source/geometry/section.cpp

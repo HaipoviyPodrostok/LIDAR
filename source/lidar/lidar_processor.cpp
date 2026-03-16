@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <random>
+#include <stdexcept>
 
 #include "math/math.hpp"
 
@@ -56,9 +57,9 @@ geometry::Vector3D get_3d_coords(uint16_t depth, double u, double v,
   return {x, y, z};
 }
 
-std::vector<geometry::Vector3D> extract_cloud(
-    DepthView depth_map, const RegionMask& mask,
-    const LidarConfig& config) noexcept {
+std::vector<geometry::Vector3D> extract_cloud(DepthView depth_map,
+                                              const RegionMask& mask,
+                                              const LidarConfig& config) {
   std::vector<geometry::Vector3D> cloud;
   cloud.reserve(depth_map.rows * depth_map.cols / 2);
 
@@ -81,8 +82,16 @@ std::vector<geometry::Vector3D> extract_cloud(
 
 std::optional<geometry::Plane> fit_plane_ransac(
     std::span<const geometry::Vector3D> cloud, size_t iterations,
-    double threshold_mm) noexcept {
-  if (cloud.size() < 3) { return std::nullopt; }
+    double threshold_mm) {
+  if (cloud.size() < 3) {
+    throw std::invalid_argument("Cloud must contain at least 3 points.");
+  }
+  if (iterations == 0) {
+    throw std::invalid_argument("Iterations must be greater than 0.");
+  }
+  if (threshold_mm <= 0.0) {
+    throw std::invalid_argument("Threshold must be positive.");
+  }
 
   std::mt19937 gen(42);
   std::uniform_int_distribution<size_t> dist(0, cloud.size() - 1);
@@ -126,8 +135,6 @@ std::optional<geometry::Plane> fit_plane_ransac(
 
   if (!best_plane) { return std::nullopt; }
 
-  // --- Least Squares Refinement ---
-  // Собираем инлайеры лучшей плоскости RANSAC
   std::vector<geometry::Vector3D> inliers_vec;
   inliers_vec.reserve(max_inliers);
   for (const auto& p : cloud) {
@@ -138,18 +145,11 @@ std::optional<geometry::Plane> fit_plane_ransac(
 
   if (inliers_vec.size() < 3) { return best_plane; }
 
-  // Центроид (среднее арифметическое)
   geometry::Vector3D centroid{0.0, 0.0, 0.0};
-  for (const auto& p : inliers_vec) {
-    centroid = centroid + p;
-  }
+  for (const auto& p : inliers_vec) { centroid = centroid + p; }
   const double n_inv = 1.0 / static_cast<double>(inliers_vec.size());
   centroid = centroid * n_inv;
 
-  // Ковариационная матрица 3x3 (симметричная)
-  // | cxx cxy cxz |
-  // | cxy cyy cyz |
-  // | cxz cyz czz |
   double cxx = 0.0, cxy = 0.0, cxz = 0.0;
   double cyy = 0.0, cyz = 0.0, czz = 0.0;
   for (const auto& p : inliers_vec) {
@@ -164,26 +164,16 @@ std::optional<geometry::Plane> fit_plane_ransac(
     czz += dz * dz;
   }
 
-  // Собственный вектор, соответствующий наименьшему собственному значению
-  // ковариационной матрицы, является нормалью МНК-плоскости.
-  // Для симметричной 3x3 матрицы решаем характеристическое уравнение
-  // det(C - λI) = 0 аналитически (формула Кардано).
-
-  // Коэффициенты характеристического полинома: -λ^3 + c1*λ^2 - c2*λ + c3 = 0
   const double c1 = cxx + cyy + czz;  // trace
-  const double c2 = cxx * cyy + cxx * czz + cyy * czz -
-                     cxy * cxy - cxz * cxz - cyz * cyz;
-  const double c3 = cxx * cyy * czz + 2.0 * cxy * cyz * cxz -
-                     cxx * cyz * cyz - cyy * cxz * cxz - czz * cxy * cxy;
+  const double c2 =
+      cxx * cyy + cxx * czz + cyy * czz - cxy * cxy - cxz * cxz - cyz * cyz;
+  const double c3 = cxx * cyy * czz + 2.0 * cxy * cyz * cxz - cxx * cyz * cyz -
+                    cyy * cxz * cxz - czz * cxy * cxy;
 
-  // Приведение к депрессивному кубическому: t^3 + pt + q = 0
-  // где λ = t + c1/3
   const double c1_3 = c1 / 3.0;
   const double p = c2 - c1 * c1_3;
   const double q = c3 - c1_3 * c2 + 2.0 * c1_3 * c1_3 * c1_3;
 
-  // Все три собственных значения вещественные (матрица симметрична)
-  // Используем тригонометрическую формулу Кардано
   const double p_3 = p / 3.0;
   const double q_2 = q / 2.0;
   const double discriminant = q_2 * q_2 + p_3 * p_3 * p_3;
@@ -196,25 +186,19 @@ std::optional<geometry::Plane> fit_plane_ransac(
 
     const double l1 = two_sqrt_neg_p3 * std::cos(theta) + c1_3;
     const double l2 =
-        two_sqrt_neg_p3 * std::cos(theta + 2.0 * std::numbers::pi / 3.0) +
-        c1_3;
+        two_sqrt_neg_p3 * std::cos(theta + 2.0 * std::numbers::pi / 3.0) + c1_3;
     const double l3 =
-        two_sqrt_neg_p3 * std::cos(theta + 4.0 * std::numbers::pi / 3.0) +
-        c1_3;
+        two_sqrt_neg_p3 * std::cos(theta + 4.0 * std::numbers::pi / 3.0) + c1_3;
 
     lambda_min = std::min({l1, l2, l3});
   } else {
-    // Вырожденный случай: используем плоскость RANSAC без уточнения
     return best_plane;
   }
 
-  // Находим собственный вектор для lambda_min: (C - lambda_min * I) * v = 0
-  // Решаем через кросс-произведение двух строк матрицы (C - λI)
   const double a00 = cxx - lambda_min;
   const double a11 = cyy - lambda_min;
   const double a22 = czz - lambda_min;
 
-  // Берем кросс-произведения строк матрицы для нахождения нормали к её ядру
   geometry::Vector3D row0{a00, cxy, cxz};
   geometry::Vector3D row1{cxy, a11, cyz};
   geometry::Vector3D row2{cxz, cyz, a22};
